@@ -104,13 +104,15 @@ class ChessAI:
         return score
 
     def alphabeta(self, board, depth, alpha, beta, maximizing_player):
-        """Minimax with Alpha-Beta pruning."""
+        """Alpha-Beta pruning without unused parameters."""
         if depth == 0 or board.is_game_over():
             return self.evaluate_board(board)
         
+        legal_moves = list(board.legal_moves)
+
         if maximizing_player:
             max_eval = float('-inf')
-            for move in board.legal_moves:
+            for move in legal_moves:
                 board.push(move)
                 eval = self.alphabeta(board, depth - 1, alpha, beta, False)
                 board.pop()
@@ -121,7 +123,7 @@ class ChessAI:
             return max_eval
         else:
             min_eval = float('inf')
-            for move in board.legal_moves:
+            for move in legal_moves:
                 board.push(move)
                 eval = self.alphabeta(board, depth - 1, alpha, beta, True)
                 board.pop()
@@ -131,8 +133,8 @@ class ChessAI:
                     break  # Alpha cutoff
             return min_eval
 
-    def find_best_move(self, board):
-        """Find the best move for the current position."""
+    def find_best_move(self, board, depth=3):
+        """Minimax alpha-beta pruning"""
         if board.is_game_over():
             return None
         
@@ -146,15 +148,15 @@ class ChessAI:
             value = self.alphabeta(board, self.depth - 1, alpha, beta, not board.turn)
             board.pop()
             
-            if board.turn == chess.WHITE:  # Maximizing (White)
+            if board.turn == chess.WHITE:  # Maximizing
                 if value > best_value:
                     best_value = value
                     best_move = move
                 alpha = max(alpha, value)
-            else:  # Minimizing (Black)
+            else:  # Minimizing
                 if value < best_value:
                     best_value = value
                     best_move = move
                 beta = min(beta, value)
-        
+
         return best_move

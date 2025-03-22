@@ -38,7 +38,7 @@ font = pygame.font.SysFont("segoeuisymbol", 60)
 
 # Initialize chess board and AI
 board = chess.Board()
-ai = ChessAI(depth=3)  # Bot with search depth of 3
+ai = ChessAI()
 
 # Game variables
 selected = None  # (file, rank) of selected piece

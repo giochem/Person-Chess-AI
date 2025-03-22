@@ -21,12 +21,12 @@ def play_match(original_ai, improved_ai, match_num, original_elo, improved_elo):
             move = original_ai.find_best_move(board)
             if move:
                 board.push(move)
-                print(f"Original AI (White) plays: {move}")
+                # print(f"Original AI (White) plays: {move}")
         else:
             move = improved_ai.find_best_move(board)
             if move:
                 board.push(move)
-                print(f"Improved AI (Black) plays: {move}")
+                # print(f"Improved AI (Black) plays: {move}")
     
     result = board.result()
     print(f"Result: {result}")
@@ -46,8 +46,8 @@ def play_match(original_ai, improved_ai, match_num, original_elo, improved_elo):
     return result, new_original_elo, new_improved_elo
 
 def run_matches():
-    original_ai = ChessAIOriginal(depth=3)
-    improved_ai = ChessAI(depth=3)
+    original_ai = ChessAIOriginal(depth=4)
+    improved_ai = ChessAI(max_depth=4)
     
     original_wins = 0
     improved_wins = 0

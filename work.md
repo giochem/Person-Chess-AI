@@ -1,5 +1,11 @@
+Algorithm
+Minimax,
+Alpha-Beta pruning
+Piece-Square Table
+Iterative Deepening + Move ordering
+
 V1:
-rl: setup model(fast and easy to implement) on jupyter notebook
+rl: setup model(fast and easy to implement)
 
 improve:
     Opening Book and Endgame Databases
