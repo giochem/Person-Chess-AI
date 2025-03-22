@@ -38,7 +38,7 @@ font = pygame.font.SysFont("segoeuisymbol", 60)
 
 # Initialize chess board and AI
 board = chess.Board()
-ai = ChessAI()
+ai = ChessAI(depth=3)
 
 # Game variables
 selected = None  # (file, rank) of selected piece

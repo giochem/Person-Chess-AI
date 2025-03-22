@@ -46,8 +46,8 @@ def play_match(original_ai, improved_ai, match_num, original_elo, improved_elo):
     return result, new_original_elo, new_improved_elo
 
 def run_matches():
-    original_ai = ChessAIOriginal(depth=4)
-    improved_ai = ChessAI(max_depth=4)
+    original_ai = ChessAIOriginal(depth=3)
+    improved_ai = ChessAI()
     
     original_wins = 0
     improved_wins = 0
