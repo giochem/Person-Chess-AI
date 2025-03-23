@@ -149,7 +149,7 @@ class ChessAI:
         return score
 
     def alphabeta(self, board, depth, alpha, beta, maximizing_player):
-        """Alpha-Beta pruning with Transposition Table."""
+        """Alpha-Beta pruning with Transposition Table, returning (evaluation, best_move)."""
         # Compute Zobrist hash key for the current position
         key = chess.polyglot.zobrist_hash(board)
         
@@ -158,17 +158,16 @@ class ChessAI:
             entry = self.transposition_table[key]  # (depth, score, flag, best_move)
             if entry[0] >= depth:
                 if entry[2] == 'exact':
-                    return entry[1]
+                    return entry[1], entry[3]
                 elif entry[2] == 'lower' and entry[1] >= beta:
-                    return entry[1]
+                    return entry[1], entry[3]
                 elif entry[2] == 'upper' and entry[1] <= alpha:
-                    return entry[1]
+                    return entry[1], entry[3]
 
         # Base case: depth 0 or game over
         if depth == 0 or board.is_game_over():
             score = self.evaluate_board(board)
-            self.transposition_table[key] = (depth, score, 'exact', None)
-            return score
+            return score, None
         
         if maximizing_player:
             max_eval = float('-inf')
@@ -176,51 +175,51 @@ class ChessAI:
             for i, move in enumerate(board.legal_moves):
                 board.push(move)
                 if i == 0:  # Principal variation move
-                    eval = self.alphabeta(board, depth - 1, alpha, beta, False)
+                    eval, _ = self.alphabeta(board, depth - 1, alpha, beta, False)
                 else:
                     # Scout search with null window
-                    eval = self.alphabeta(board, depth - 1, alpha, alpha + 1, False)
+                    eval, _ = self.alphabeta(board, depth - 1, alpha, alpha + 1, False)
                     if eval > alpha:
                         # Re-search with full window if scout search suggests a better move
-                        eval = self.alphabeta(board, depth - 1, alpha, beta, False)
+                        eval, _ = self.alphabeta(board, depth - 1, alpha, beta, False)
                 board.pop()
 
                 if eval > max_eval:
                     max_eval = eval
                     best_move = move
                 alpha = max(alpha, eval)
-                if beta <= alpha: # Beta cutoff
+                if beta <= alpha:  # Beta cutoff
                     break
-            # Determine flag and store in transposition table
+            # Store in transposition table
             flag = 'lower' if max_eval >= beta else 'exact'
             self.transposition_table[key] = (depth, max_eval, flag, best_move)
-            return max_eval
+            return max_eval, best_move
         else:
             min_eval = float('inf')
             best_move = None
             for i, move in enumerate(board.legal_moves):
                 board.push(move)
                 if i == 0:  # Principal variation move
-                    eval = self.alphabeta(board, depth - 1, alpha, beta, True)
+                    eval, _ = self.alphabeta(board, depth - 1, alpha, beta, True)
                 else:
                     # Scout search with null window
-                    eval = self.alphabeta(board, depth - 1, beta - 1, beta, True)
+                    eval, _ = self.alphabeta(board, depth - 1, beta - 1, beta, True)
                     if eval < beta:
                         # Re-search with full window if scout search suggests a better move
-                        eval = self.alphabeta(board, depth - 1, alpha, beta, True)
+                        eval, _ = self.alphabeta(board, depth - 1, alpha, beta, True)
                 board.pop()
 
                 if eval < min_eval:
                     min_eval = eval
                     best_move = move
                 beta = min(beta, eval)
-                if beta <= alpha: # Alpha cutoff
+                if beta <= alpha:  # Alpha cutoff
                     break
-            # Store result in transposition table
+            # Store in transposition table
             flag = 'upper' if min_eval <= alpha else 'exact'
             self.transposition_table[key] = (depth, min_eval, flag, best_move)
-            return min_eval
-
+            return min_eval, best_move
+        
     def get_opening_move(self, board):
         """Get a move from the Polyglot opening book."""
         if self.book is None:
@@ -232,7 +231,7 @@ class ChessAI:
             return None
 
     def find_best_move(self, board):
-        """Find the best move, prioritizing the opening book."""
+        """Find the best move by calling alphabeta directly, prioritizing the opening book."""
         if board.is_game_over():
             return None
         opening_move = self.get_opening_move(board)
@@ -240,22 +239,6 @@ class ChessAI:
             print('opening book')
             return opening_move
         
-        best_move = None
-        best_value = float('-inf') if board.turn == chess.WHITE else float('inf')
-        alpha = float('-inf')
-        beta = float('inf')
-        for move in board.legal_moves:
-            board.push(move)
-            value = self.alphabeta(board, self.depth - 1, alpha, beta, not board.turn)
-            board.pop()
-            if board.turn == chess.WHITE:
-                if value > best_value:
-                    best_value = value
-                    best_move = move
-                alpha = max(alpha, value)
-            else:
-                if value < best_value:
-                    best_value = value
-                    best_move = move
-                beta = min(beta, value)
+        # Call alphabeta with full depth and get the best move
+        _, best_move = self.alphabeta(board, self.depth, float('-inf'), float('inf'), board.turn == chess.WHITE)
         return best_move
