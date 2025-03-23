@@ -1,9 +1,11 @@
 import chess
 import chess.polyglot
 import random
+
 class ChessAI:
     def __init__(self, depth=3, book_path="Titans.bin"):
         self.depth = depth
+        self.transposition_table = {}  # Initialize transposition table**
 
         # Material values for evaluation (in centipawns)
         self.piece_values = {
@@ -12,20 +14,20 @@ class ChessAI:
             chess.BISHOP: 330,
             chess.ROOK: 500,
             chess.QUEEN: 900,
-            chess.KING: 20000  # High value for king, handled via checkmate
+            chess.KING: 20000
         }
 
         # Piece-Square Tables for white's perspective (in centipawns)
         self.psqt_white = {
             chess.PAWN: [
-                0,  0,  0,  0,  0,  0,  0,  0,   # rank 1
-                5, 10, 10,-20,-20,10,10, 5,   # rank 2
-                5,-5,-10,  0,  0,-10,-5, 5,   # rank 3
-                0,  0,  0, 20, 20,  0,  0,  0,   # rank 4
-                5,  5, 10, 25, 25, 10,  5,  5,   # rank 5
-                10, 10, 20, 30, 30, 20, 10, 10,   # rank 6
-                50, 50, 50, 50, 50, 50, 50, 50,   # rank 7
-                0,  0,  0,  0,  0,  0,  0,  0    # rank 8
+                0,  0,  0,  0,  0,  0,  0,  0,
+                5, 10, 10,-20,-20,10,10, 5,
+                5,-5,-10,  0,  0,-10,-5, 5,
+                0,  0,  0, 20, 20,  0,  0,  0,
+                5,  5, 10, 25, 25, 10,  5,  5,
+                10, 10, 20, 30, 30, 20, 10, 10,
+                50, 50, 50, 50, 50, 50, 50, 50,
+                0,  0,  0,  0,  0,  0,  0,  0
             ],
             chess.KNIGHT: [
                 -50,-40,-30,-30,-30,-30,-40,-50,
@@ -89,8 +91,7 @@ class ChessAI:
     def count_doubled_blocked_isolated(self, board, color):
         """Count doubled, blocked, and isolated pawns for a given color."""
         pawns = board.pieces(chess.PAWN, color)
-        files = [[] for _ in range(8)]  # List of pawn ranks per file
-        
+        files = [[] for _ in range(8)] # List of pawn ranks per file
         for sq in pawns:
             file = chess.square_file(sq)
             rank = chess.square_rank(sq)
@@ -98,9 +99,8 @@ class ChessAI:
         doubled = 0
         blocked = 0
         isolated = 0
-        
         for file in range(8):
-            if len(files[file]) > 1:  # Doubled pawns
+            if len(files[file]) > 1:
                 doubled += len(files[file]) - 1
             for rank in files[file]:
                 ahead_sq = chess.square(file, rank + 1 if color == chess.WHITE else rank - 1)
@@ -108,7 +108,6 @@ class ChessAI:
                     board.piece_at(ahead_sq) is not None and 
                     board.piece_at(ahead_sq).color != color):
                     blocked += 1
-        
         for file in range(8):
             if files[file]:
                 has_neighbors = (file > 0 and files[file - 1]) or (file < 7 and files[file + 1])
@@ -122,7 +121,6 @@ class ChessAI:
             return -10000 if board.turn == chess.WHITE else 10000
         if board.is_stalemate() or board.is_insufficient_material():
             return 0
-        
         # white (+), black: (-)
         score = 0
         wd, ws, wi = self.count_doubled_blocked_isolated(board, chess.WHITE)
@@ -147,37 +145,64 @@ class ChessAI:
                     if piece.piece_type in self.psqt_white:
                         flipped_square = (7 - (square // 8)) * 8 + (7 - (square % 8))
                         score -= self.psqt_white[piece.piece_type][flipped_square]
-
         return score
 
     def alphabeta(self, board, depth, alpha, beta, maximizing_player):
-        """Alpha-Beta pruning without unused parameters."""
+        """Alpha-Beta pruning with Transposition Table."""
+        # Compute Zobrist hash key for the current position
+        key = chess.polyglot.zobrist_hash(board)
+        
+        # Check transposition table
+        if key in self.transposition_table:
+            entry = self.transposition_table[key]  # (depth, score, flag, best_move)
+            if entry[0] >= depth:
+                if entry[2] == 'exact':
+                    return entry[1]
+                elif entry[2] == 'lower' and entry[1] >= beta:
+                    return entry[1]
+                elif entry[2] == 'upper' and entry[1] <= alpha:
+                    return entry[1]
 
+        # Base case: depth 0 or game over
         if depth == 0 or board.is_game_over():
-            return self.evaluate_board(board)
+            score = self.evaluate_board(board)
+            self.transposition_table[key] = (depth, score, 'exact', None)
+            return score
         
         legal_moves = list(board.legal_moves)
         if maximizing_player:
             max_eval = float('-inf')
+            best_move = None
             for move in legal_moves:
                 board.push(move)
                 eval = self.alphabeta(board, depth - 1, alpha, beta, False)
                 board.pop()
-                max_eval = max(max_eval, eval)
+                if eval > max_eval:
+                    max_eval = eval
+                    best_move = move
                 alpha = max(alpha, eval)
                 if beta <= alpha:
                     break
+            # Determine flag and store in transposition table
+            flag = 'lower' if max_eval >= beta else 'exact'
+            self.transposition_table[key] = (depth, max_eval, flag, best_move)
             return max_eval
         else:
             min_eval = float('inf')
+            best_move = None
             for move in legal_moves:
                 board.push(move)
                 eval = self.alphabeta(board, depth - 1, alpha, beta, True)
                 board.pop()
-                min_eval = min(min_eval, eval)
+                if eval < min_eval:
+                    min_eval = eval
+                    best_move = move
                 beta = min(beta, eval)
                 if beta <= alpha:
                     break
+            # Determine flag and store in transposition table
+            flag = 'upper' if min_eval <= alpha else 'exact'
+            self.transposition_table[key] = (depth, min_eval, flag, best_move)
             return min_eval
 
     def get_opening_move(self, board):
@@ -185,61 +210,35 @@ class ChessAI:
         if self.book is None:
             return None
         try:
-            # Find the main move in the book for the current position
             entry = self.book.weighted_choice(board)
             return entry.move
         except IndexError:
-            # No move found in the book for this position
             return None
 
     def find_best_move(self, board):
         """Find the best move, prioritizing the opening book."""
         if board.is_game_over():
             return None
-        
-        # Check the opening book first
         opening_move = self.get_opening_move(board)
         if opening_move is not None and opening_move in board.legal_moves:
             print('opening book')
             return opening_move
-
-        # Fall back to alpha-beta if no book move is found
         best_move = None
         best_value = float('-inf') if board.turn == chess.WHITE else float('inf')
         alpha = float('-inf')
         beta = float('inf')
-        
         for move in board.legal_moves:
             board.push(move)
             value = self.alphabeta(board, self.depth - 1, alpha, beta, not board.turn)
             board.pop()
-            
-            if board.turn == chess.WHITE:  # Maximizing
+            if board.turn == chess.WHITE:
                 if value > best_value:
                     best_value = value
                     best_move = move
                 alpha = max(alpha, value)
-            else:  # Minimizing
+            else:
                 if value < best_value:
                     best_value = value
                     best_move = move
                 beta = min(beta, value)
-
         return best_move
-
-# Example usage
-# if __name__ == "__main__":
-#     board = chess.Board()
-#     ai = ChessAI(depth=3, book_path="book.bin")
-#     move_count = 0
-#     while not board.is_game_over() and move_count < 20:  # Limit to 20 half-moves (10 moves per side)
-#         move = ai.find_best_move(board)
-#         if move:
-#             print(f"Move {move_count + 1}: {move}")
-#             board.push(move)
-#             print(board)
-#             print()
-#             move_count += 1
-#         else:
-#             print("Game over!")
-#             break
