@@ -163,6 +163,23 @@ class ChessAI:
                     return entry[1], entry[3]
                 elif entry[2] == 'upper' and entry[1] <= alpha:
                     return entry[1], entry[3]
+        
+        # Null Move Pruning
+        if depth >= 3 and not board.is_check():
+            board.push(chess.Move.null())
+            if maximizing_player:
+                null_eval, _ = self.alphabeta(board, depth - 3, -beta, -beta + 1, False)
+                null_eval = -null_eval  # Switch back to current player's perspective
+                if null_eval >= beta:
+                    board.pop()
+                    return null_eval, None
+            else:
+                null_eval, _ = self.alphabeta(board, depth - 3, alpha - 1, alpha, True)
+                null_eval = -null_eval  # Switch back to current player's perspective
+                if null_eval <= alpha:
+                    board.pop()
+                    return null_eval, None
+            board.pop()
 
         # Base case: depth 0 or game over
         if depth == 0 or board.is_game_over():
