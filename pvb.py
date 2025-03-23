@@ -111,7 +111,7 @@ while running:
         bot_move = ai.find_best_move(board)
         if bot_move:
             board.push(bot_move)
-            pygame.time.wait(500)  # Delay to visualize bot's move
+            # pygame.time.wait(500)  # Delay to visualize bot's move
 
     # Draw everything
     screen.fill((255, 255, 255))

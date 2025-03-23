@@ -43,7 +43,7 @@ piece_font = pygame.font.SysFont("segoeuisymbol", 50)
 text_font = pygame.font.SysFont("arial", 16)
 
 # Initialize AI
-ai = ChessAI()
+ai = ChessAI(depth=1)
 
 test_cases = [
     # Normal Cases
@@ -67,6 +67,7 @@ test_cases = [
 
     # Checkmate Case
     {"name": "Checkmate", "fen": "rnbqkbnr/p1pppppp/8/8/1pB1P3/5Q2/PPPP1PPP/RNB1K1NR w KQkq - 0 4"},
+    {"name": "Trap", "fen": "r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 4 4"},
 ]
 
 # Precompute AI moves and boards (simplified without expected)

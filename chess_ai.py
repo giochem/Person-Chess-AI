@@ -147,7 +147,50 @@ class ChessAI:
                         flipped_square = (7 - (square // 8)) * 8 + (7 - (square % 8))
                         score -= self.psqt_white[piece.piece_type][flipped_square]
         return score
+    
+    def quiescence_search(self, board, alpha, beta, maximizing_player):
+        """Quiescence Search to evaluate quiet positions."""
+        stand_pat = self.evaluate_board(board)
+        if maximizing_player:
+            if stand_pat >= beta:
+                return stand_pat, None
+            alpha = max(alpha, stand_pat)
+        else:
+            if stand_pat <= alpha:
+                return stand_pat, None
+            beta = min(beta, stand_pat)
 
+        # Generate capture moves only
+        captures = [move for move in board.legal_moves if board.is_capture(move)]
+        if not captures:
+            return stand_pat, None
+
+        # Move ordering: prioritize captures of higher-value pieces
+        captures.sort(key=lambda move: self.piece_values.get(board.piece_at(move.to_square).piece_type, 0), reverse=True)
+
+        if maximizing_player:
+            max_eval = float('-inf')
+            for move in captures:
+                board.push(move)
+                eval, _ = self.quiescence_search(board, alpha, beta, False)
+                board.pop()
+                max_eval = max(max_eval, eval)
+                alpha = max(alpha, eval)
+                if beta <= alpha:  # Beta cutoff
+                    break
+            return max_eval, None
+        else:
+            min_eval = float('inf')
+            for move in captures:
+                board.push(move)
+                eval, _ = self.quiescence_search(board, alpha, beta, True)
+                board.pop()
+                min_eval = min(min_eval, eval)
+                beta = min(beta, eval)
+                if beta <= alpha:  # Alpha cutoff
+                    break
+            return min_eval, None
+            
     def alphabeta(self, board, depth, alpha, beta, maximizing_player):
         """Alpha-Beta pruning with Transposition Table, returning (evaluation, best_move)."""
         # Compute Zobrist hash key for the current position
@@ -181,7 +224,10 @@ class ChessAI:
                     return null_eval, None
             board.pop()
 
-        # Base case: depth 0 or game over
+        # At depth 0, use Quiescence Search
+        if depth == 0:
+            return self.quiescence_search(board, alpha, beta, maximizing_player)
+        # Game over
         if depth == 0 or board.is_game_over():
             score = self.evaluate_board(board)
             return score, None
