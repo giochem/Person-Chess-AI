@@ -5,7 +5,7 @@ import random
 class ChessAI:
     def __init__(self, depth=3, book_path="Titans.bin"):
         self.depth = depth
-        self.transposition_table = {}  # Initialize transposition table**
+        self.transposition_table = {}  # Initialize transposition table
 
         # Material values for evaluation (in centipawns)
         self.piece_values = {
@@ -121,6 +121,7 @@ class ChessAI:
             return -10000 if board.turn == chess.WHITE else 10000
         if board.is_stalemate() or board.is_insufficient_material():
             return 0
+        
         # white (+), black: (-)
         score = 0
         wd, ws, wi = self.count_doubled_blocked_isolated(board, chess.WHITE)
@@ -169,19 +170,26 @@ class ChessAI:
             self.transposition_table[key] = (depth, score, 'exact', None)
             return score
         
-        legal_moves = list(board.legal_moves)
         if maximizing_player:
             max_eval = float('-inf')
             best_move = None
-            for move in legal_moves:
+            for i, move in enumerate(board.legal_moves):
                 board.push(move)
-                eval = self.alphabeta(board, depth - 1, alpha, beta, False)
+                if i == 0:  # Principal variation move
+                    eval = self.alphabeta(board, depth - 1, alpha, beta, False)
+                else:
+                    # Scout search with null window
+                    eval = self.alphabeta(board, depth - 1, alpha, alpha + 1, False)
+                    if eval > alpha:
+                        # Re-search with full window if scout search suggests a better move
+                        eval = self.alphabeta(board, depth - 1, alpha, beta, False)
                 board.pop()
+
                 if eval > max_eval:
                     max_eval = eval
                     best_move = move
                 alpha = max(alpha, eval)
-                if beta <= alpha:
+                if beta <= alpha: # Beta cutoff
                     break
             # Determine flag and store in transposition table
             flag = 'lower' if max_eval >= beta else 'exact'
@@ -190,17 +198,25 @@ class ChessAI:
         else:
             min_eval = float('inf')
             best_move = None
-            for move in legal_moves:
+            for i, move in enumerate(board.legal_moves):
                 board.push(move)
-                eval = self.alphabeta(board, depth - 1, alpha, beta, True)
+                if i == 0:  # Principal variation move
+                    eval = self.alphabeta(board, depth - 1, alpha, beta, True)
+                else:
+                    # Scout search with null window
+                    eval = self.alphabeta(board, depth - 1, beta - 1, beta, True)
+                    if eval < beta:
+                        # Re-search with full window if scout search suggests a better move
+                        eval = self.alphabeta(board, depth - 1, alpha, beta, True)
                 board.pop()
+
                 if eval < min_eval:
                     min_eval = eval
                     best_move = move
                 beta = min(beta, eval)
-                if beta <= alpha:
+                if beta <= alpha: # Alpha cutoff
                     break
-            # Determine flag and store in transposition table
+            # Store result in transposition table
             flag = 'upper' if min_eval <= alpha else 'exact'
             self.transposition_table[key] = (depth, min_eval, flag, best_move)
             return min_eval
@@ -223,6 +239,7 @@ class ChessAI:
         if opening_move is not None and opening_move in board.legal_moves:
             print('opening book')
             return opening_move
+        
         best_move = None
         best_value = float('-inf') if board.turn == chess.WHITE else float('inf')
         alpha = float('-inf')
