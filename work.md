@@ -12,6 +12,6 @@ V1:
 setup model(fast and easy to implement)
 
 V2:
-deeper: nnue
+deeper: neural network
 
 V3: compare, check hard FEN, demo web, document
