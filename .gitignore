@@ -2,3 +2,5 @@
 *__pycache__
 result.md
 chess-data
+tmp
+notebook/checkpoint/*
