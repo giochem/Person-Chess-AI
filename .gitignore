@@ -1,4 +1,7 @@
 .env
 *__pycache__
 result.md
-chess-data
+assets/chess-data/*
+tmp/
+notebook/checkpoint/*
+notebook/runs/*
