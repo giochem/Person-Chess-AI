@@ -37,3 +37,7 @@ PLAN: train model -> gắn vào basic minimax thay eval ban đầu -> compare
                      mang lên lichess thi đấu
                      tối ưu hoá: chuyển sang ngôn ngữ chạy nhanh hơn: c++, go, java
                                  thuật toán tối ưu chạy train + code: gpu, bitboard,
+
+now: implement Main evaluation
+https://hxim.github.io/Stockfish-Evaluation-Guide/
+chạy minimax + evaluation bằng js -> tạo chess-engine -> export use in vuejs
