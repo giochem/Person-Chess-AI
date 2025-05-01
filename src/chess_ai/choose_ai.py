@@ -1,7 +1,8 @@
 import chess
 import chess.engine
+from .cnn.predict import CNN
 from .nnue.minimax import MinimaxNNUE
-from .knightvision.minimax_inter import KnightVision
+from .knightvision.minimax_inter import KnightVision, AdvantageMinimax
 from stockfish import Stockfish
 from pathlib import Path
 import os
@@ -16,7 +17,9 @@ class ChessAIManager:
         # Initialize different chess AIs
         self.available_ais = {
             "KnightVision-1s": KnightVision(time_limit=1.0),
-            "KnightVision-10s": KnightVision(time_limit=10.0),
+            "KnightVision-10s": KnightVision(max_depth=4, time_limit=10.0),
+            "AdvantageMinimax": AdvantageMinimax(),
+            "CNN": CNN(),
             "MinimaxNNUE-3": MinimaxNNUE(depth=3, path_file=str(model_path)),
             "MinimaxNNUE-4": MinimaxNNUE(depth=4, path_file=str(model_path)),
             "Stockfish-Easy": StockfishAI(depth=2, difficulty="easy"),

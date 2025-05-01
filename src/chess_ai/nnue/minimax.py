@@ -21,7 +21,7 @@ class NNUE(nn.Module):
         x = self.clipped_relu(x)
         x = self.fc3(x)
         return x
-    
+
 
 def preprocess_fen(fen):
     board = chess.Board(fen)

@@ -1,12 +1,314 @@
 import chess
 import time
 import math
+import chess.polyglot
 
+class AdvantageMinimax:
+    def __init__(self, depth=3, book_path="Titans.bin"):
+        self.depth = depth
+        self.transposition_table = {}  # Initialize transposition table
+
+        # Material values for evaluation (in centipawns)
+        self.piece_values = {
+            chess.PAWN: 100,
+            chess.KNIGHT: 320,
+            chess.BISHOP: 330,
+            chess.ROOK: 500,
+            chess.QUEEN: 900,
+            chess.KING: 20000
+        }
+
+        # Piece-Square Tables for white's perspective (in centipawns)
+        self.psqt_white = {
+            chess.PAWN: [
+                0,  0,  0,  0,  0,  0,  0,  0,
+                5, 10, 10,-20,-20,10,10, 5,
+                5,-5,-10,  0,  0,-10,-5, 5,
+                0,  0,  0, 20, 20,  0,  0,  0,
+                5,  5, 10, 25, 25, 10,  5,  5,
+                10, 10, 20, 30, 30, 20, 10, 10,
+                50, 50, 50, 50, 50, 50, 50, 50,
+                0,  0,  0,  0,  0,  0,  0,  0
+            ],
+            chess.KNIGHT: [
+                -50,-40,-30,-30,-30,-30,-40,-50,
+                -40,-20,  0,  0,  0,  0,-20,-40,
+                -30,  0, 10, 15, 15, 10,  0,-30,
+                -30,  5, 15, 20, 20, 15,  5,-30,
+                -30,  0, 15, 20, 20, 15,  0,-30,
+                -30,  5, 10, 15, 15, 10,  5,-30,
+                -40,-20,  0,  5,  5,  0,-20,-40,
+                -50,-40,-30,-30,-30,-30,-40,-50
+            ],
+            chess.BISHOP: [
+                -20,-10,-10,-10,-10,-10,-10,-20,
+                -10,  0,  0,  0,  0,  0,  0,-10,
+                -10,  0,  5, 10, 10,  5,  0,-10,
+                -10,  5,  5, 10, 10,  5,  5,-10,
+                -10,  0, 10, 10, 10, 10,  0,-10,
+                -10, 10, 10, 10, 10, 10, 10,-10,
+                -10,  5,  0,  0,  0,  0,  5,-10,
+                -20,-10,-10,-10,-10,-10,-10,-20
+            ],
+            chess.ROOK: [
+                0,  0,  0,  0,  0,  0,  0,  0,
+                5, 10, 10, 10, 10, 10, 10,  5,
+                -5,  0,  0,  0,  0,  0,  0, -5,
+                -5,  0,  0,  0,  0,  0,  0, -5,
+                -5,  0,  0,  0,  0,  0,  0, -5,
+                -5,  0,  0,  0,  0,  0,  0, -5,
+                -5,  0,  0,  5,  5,  0,  0, -5,
+                0,  0,  0,  0,  0,  0,  0,  0
+            ],
+            chess.QUEEN: [
+                -20,-10,-10, -5, -5,-10,-10,-20,
+                -10,  0,  0,  0,  0,  0,  0,-10,
+                -10,  0,  5,  5,  5,  5,  0,-10,
+                -5,  0,  5,  5,  5,  5,  0, -5,
+                0,  0,  5,  5,  5,  5,  0, -5,
+                -10,  5,  5,  5,  5,  5,  0,-10,
+                -10,  0,  5,  0,  0,  0,  0,-10,
+                -20,-10,-10,-10,-10,-10,-10,-20
+            ],
+            chess.KING: [
+                -30,-40,-40,-50,-50,-40,-40,-30,
+                -30,-40,-40,-50,-50,-40,-40,-30,
+                -30,-40,-40,-50,-50,-40,-40,-30,
+                -30,-40,-40,-50,-50,-40,-40,-30,
+                -20,-30,-30,-40,-40,-30,-30,-20,
+                -10,-20,-20,-30,-30,-20,-20,-10,
+                0,-10,-10,-20,-20,-10,-10, 0,
+                20,-5,-5,-10,-10,-5,-5, 20
+            ]
+        }
+
+        # Load Polyglot opening book
+        try:
+            self.book = chess.polyglot.open_reader(book_path)
+        except FileNotFoundError:
+            print(f"Warning: Opening book file '{book_path}' not found. AI will use alpha-beta only.")
+            self.book = None
+
+    def count_doubled_blocked_isolated(self, board, color):
+        """Count doubled, blocked, and isolated pawns for a given color."""
+        pawns = board.pieces(chess.PAWN, color)
+        files = [[] for _ in range(8)] # List of pawn ranks per file
+        for sq in pawns:
+            file = chess.square_file(sq)
+            rank = chess.square_rank(sq)
+            files[file].append(rank)
+        doubled = 0
+        blocked = 0
+        isolated = 0
+        for file in range(8):
+            if len(files[file]) > 1:
+                doubled += len(files[file]) - 1
+            for rank in files[file]:
+                ahead_sq = chess.square(file, rank + 1 if color == chess.WHITE else rank - 1)
+                if (0 <= ahead_sq < 64 and
+                    board.piece_at(ahead_sq) is not None and
+                    board.piece_at(ahead_sq).color != color):
+                    blocked += 1
+        for file in range(8):
+            if files[file]:
+                has_neighbors = (file > 0 and files[file - 1]) or (file < 7 and files[file + 1])
+                if not has_neighbors:
+                    isolated += len(files[file])
+        return doubled, blocked, isolated
+    
+    def evaluate_board(self, board):
+        """Evaluate the board position based on material and piece-square tables."""
+        if board.is_checkmate():
+            return -10000 if board.turn == chess.WHITE else 10000
+        if board.is_stalemate() or board.is_insufficient_material():
+            return 0
+        
+        # white (+), black: (-)
+        score = 0
+        wd, ws, wi = self.count_doubled_blocked_isolated(board, chess.WHITE)
+        bd, bs, bi = self.count_doubled_blocked_isolated(board, chess.BLACK)
+        score -= 10 * wd
+        score -= 10 * ws
+        score -= 10 * wi
+        score += 10 * bd
+        score += 10 * bs
+        score += 10 * bi
+
+        for square in chess.SQUARES:
+            piece = board.piece_at(square)
+            if piece is not None:
+                piece_value = self.piece_values[piece.piece_type]
+                if piece.color == chess.WHITE:
+                    score += piece_value
+                    if piece.piece_type in self.psqt_white:
+                        score += self.psqt_white[piece.piece_type][square]
+                else:
+                    score -= piece_value
+                    if piece.piece_type in self.psqt_white:
+                        flipped_square = (7 - (square // 8)) * 8 + (7 - (square % 8))
+                        score -= self.psqt_white[piece.piece_type][flipped_square]
+        return score
+    
+    def quiescence_search(self, board, alpha, beta, maximizing_player):
+        """Quiescence Search to evaluate quiet positions."""
+        stand_pat = self.evaluate_board(board)
+        if maximizing_player:
+            if stand_pat >= beta:
+                return stand_pat, None
+            alpha = max(alpha, stand_pat)
+        else:
+            if stand_pat <= alpha:
+                return stand_pat, None
+            beta = min(beta, stand_pat)
+
+        # Generate capture moves only
+        captures = [move for move in board.legal_moves if board.is_capture(move)]
+        if not captures:
+            return stand_pat, None
+
+        # Move ordering: prioritize captures of higher-value pieces
+        captures.sort(key=lambda move: self.piece_values.get(board.piece_at(move.to_square).piece_type, 0), reverse=True)
+
+        if maximizing_player:
+            max_eval = float('-inf')
+            for move in captures:
+                board.push(move)
+                evaluation, _ = self.quiescence_search(board, alpha, beta, False)
+                board.pop()
+                max_eval = max(max_eval, evaluation)
+                alpha = max(alpha, evaluation)
+                if beta <= alpha:  # Beta cutoff
+                    break
+            return max_eval, None
+        else:
+            min_eval = float('inf')
+            for move in captures:
+                board.push(move)
+                evaluation, _ = self.quiescence_search(board, alpha, beta, True)
+                board.pop()
+                min_eval = min(min_eval, evaluation)
+                beta = min(beta, evaluation)
+                if beta <= alpha:  # Alpha cutoff
+                    break
+            return min_eval, None
+            
+    def alphabeta(self, board, depth, alpha, beta, maximizing_player):
+        """Alpha-Beta pruning with Transposition Table, returning (evaluation, best_move)."""
+        # Compute Zobrist hash key for the current position
+        key = chess.polyglot.zobrist_hash(board)
+        
+        # Check transposition table
+        if key in self.transposition_table:
+            entry = self.transposition_table[key]  # (depth, score, flag, best_move)
+            if entry[0] >= depth:
+                if ((entry[2] == 'exact') or 
+                    (entry[2] == 'lower' and entry[1] >= beta) or
+                    (entry[2] == 'upper' and entry[1] <= alpha)):
+                    return entry[1], entry[3]
+        
+        # Null Move Pruning
+        if depth >= 3 and not board.is_check():
+            board.push(chess.Move.null())
+            if maximizing_player:
+                null_eval, _ = self.alphabeta(board, depth - 3, -beta, -beta + 1, False)
+                null_eval = -null_eval  # Switch back to current player's perspective
+                if null_eval >= beta:
+                    board.pop()
+                    return null_eval, None
+            else:
+                null_eval, _ = self.alphabeta(board, depth - 3, alpha - 1, alpha, True)
+                null_eval = -null_eval  # Switch back to current player's perspective
+                if null_eval <= alpha:
+                    board.pop()
+                    return null_eval, None
+            board.pop()
+
+        # At depth 0, use Quiescence Search
+        if depth == 0:
+            return self.quiescence_search(board, alpha, beta, maximizing_player)
+        # Game over
+        if depth == 0 or board.is_game_over():
+            score = self.evaluate_board(board)
+            return score, None
+        
+        if maximizing_player:
+            max_eval = float('-inf')
+            best_move = None
+            for i, move in enumerate(board.legal_moves):
+                board.push(move)
+                if i == 0:  # Principal variation move
+                    evaluation, _ = self.alphabeta(board, depth - 1, alpha, beta, False)
+                else:
+                    # Scout search with null window
+                    evaluation, _ = self.alphabeta(board, depth - 1, alpha, alpha + 1, False)
+                    if evaluation > alpha:
+                        # Re-search with full window if scout search suggests a better move
+                        evaluation, _ = self.alphabeta(board, depth - 1, alpha, beta, False)
+                board.pop()
+
+                if evaluation > max_eval:
+                    max_eval = evaluation
+                    best_move = move
+                alpha = max(alpha, evaluation)
+                if beta <= alpha:  # Beta cutoff
+                    break
+            # Store in transposition table
+            flag = 'lower' if max_eval >= beta else 'exact'
+            self.transposition_table[key] = (depth, max_eval, flag, best_move)
+            return max_eval, best_move
+        else:
+            min_eval = float('inf')
+            best_move = None
+            for i, move in enumerate(board.legal_moves):
+                board.push(move)
+                if i == 0:  # Principal variation move
+                    evaluation, _ = self.alphabeta(board, depth - 1, alpha, beta, True)
+                else:
+                    # Scout search with null window
+                    evaluation, _ = self.alphabeta(board, depth - 1, beta - 1, beta, True)
+                    if evaluation < beta:
+                        # Re-search with full window if scout search suggests a better move
+                        evaluation, _ = self.alphabeta(board, depth - 1, alpha, beta, True)
+                board.pop()
+
+                if evaluation < min_eval:
+                    min_eval = evaluation
+                    best_move = move
+                beta = min(beta, evaluation)
+                if beta <= alpha:  # Alpha cutoff
+                    break
+            # Store in transposition table
+            flag = 'upper' if min_eval <= alpha else 'exact'
+            self.transposition_table[key] = (depth, min_eval, flag, best_move)
+            return min_eval, best_move
+        
+    def get_opening_move(self, board):
+        """Get a move from the Polyglot opening book."""
+        if self.book is None:
+            return None
+        try:
+            entry = self.book.weighted_choice(board)
+            return entry.move
+        except IndexError:
+            return None
+
+    def find_best_move(self, board):
+        """Find the best move by calling alphabeta directly, prioritizing the opening book."""
+        if board.is_game_over():
+            return None
+        opening_move = self.get_opening_move(board)
+        if opening_move is not None and opening_move in board.legal_moves:
+            print('opening book')
+            return opening_move
+        
+        # Call alphabeta with full depth and get the best move
+        _, best_move = self.alphabeta(board, self.depth, float('-inf'), float('inf'), board.turn == chess.WHITE)
+        return best_move
 class KnightVision:
     def __init__(self, max_depth=5, time_limit=2.0):
         self.max_depth = max_depth
         self.time_limit = time_limit  # Time limit per move in seconds
-        # Material values: [None, Pawn, Knight, Bishop, Rook, Queen, King]
+        # Material values: [None, Pawn, Knighta, Bishop, Rook, Queen, King]
         self.material_values = [0, 100, 300, 300, 500, 900, 10000]
 
     def evaluate_board(self, board):
@@ -15,23 +317,63 @@ class KnightVision:
             return -10000 if board.turn == chess.WHITE else 10000
         if board.is_stalemate() or board.is_insufficient_material():
             return 0
-        # Material balance: current player - opponent
+            
+        # Material balance always from white's perspective
         pieces = board.piece_map()
         material = sum(self.material_values[piece.piece_type]
-                      for piece in pieces.values() if piece.color == board.turn)
+                      for piece in pieces.values() if piece.color == chess.WHITE)
         material -= sum(self.material_values[piece.piece_type]
-                       for piece in pieces.values() if piece.color != board.turn)
+                       for piece in pieces.values() if piece.color == chess.BLACK)
 
         # Mobility: logarithm of the number of legal moves
         legal_moves = list(board.legal_moves)
-        mobility = math.log(len(legal_moves)) if legal_moves else 0
+        mobility = math.log(len(legal_moves) + 1)
+        mobility_score = mobility if board.turn == chess.WHITE else -mobility
 
-        return material + mobility
+        return material + mobility_score
+
+    def quiescence_search(self, board, alpha, beta, maximizing_player):
+        """Quiescence search to evaluate captures until a quiet position is reached."""
+        stand_pat = self.evaluate_board(board)
+        if maximizing_player:
+            if stand_pat >= beta:
+                return beta
+            alpha = max(alpha, stand_pat)
+        else:
+            if stand_pat <= alpha:
+                return alpha
+            beta = min(beta, stand_pat)
+
+        # Only consider capture moves
+        capture_moves = [move for move in board.legal_moves if board.is_capture(move)]
+        capture_moves = self.order_moves(capture_moves, board)
+
+        if maximizing_player:
+            for move in capture_moves:
+                board.push(move)
+                score = self.quiescence_search(board, alpha, beta, False)
+                board.pop()
+                if score >= beta:
+                    return beta
+                alpha = max(alpha, score)
+        else:
+            for move in capture_moves:
+                board.push(move)
+                score = self.quiescence_search(board, alpha, beta, True)
+                board.pop()
+                if score <= alpha:
+                    return alpha
+                beta = min(beta, score)
+
+        return alpha if maximizing_player else beta
 
     def alphabeta(self, board, depth, alpha, beta, maximizing_player):
-        """Minimax with Alpha-Beta pruning."""
+        """Minimax with Alpha-Beta pruning and Quiescence Search."""
         if depth == 0 or board.is_game_over():
-            return self.evaluate_board(board)
+            # Negate score for black to maintain white's perspective
+            score = self.quiescence_search(board, alpha, beta, maximizing_player)
+            return score if board.turn == chess.WHITE else -score
+
         if maximizing_player:
             max_eval = float('-inf')
             for move in self.order_moves(board.legal_moves, board):
@@ -41,7 +383,7 @@ class KnightVision:
                 max_eval = max(max_eval, evaluation)
                 alpha = max(alpha, evaluation)
                 if beta <= alpha:
-                    break  # Beta cutoff
+                    break
             return max_eval
         else:
             min_eval = float('inf')
@@ -52,22 +394,33 @@ class KnightVision:
                 min_eval = min(min_eval, evaluation)
                 beta = min(beta, evaluation)
                 if beta <= alpha:
-                    break  # Alpha cutoff
+                    break
             return min_eval
 
     def _evaluate_moves_at_depth(self, board, depth, alpha, beta):
         """Evaluate all moves at a specific depth and return the best move and its value."""
         best_move = None
-        best_value = float('-inf') if board.turn == chess.WHITE else float('inf')
+        best_value = float('-inf')  # Always from white's perspective
 
-        for move in board.legal_moves:
+        for move in self.order_moves(board.legal_moves, board):
             board.push(move)
             value = self.alphabeta(board, depth - 1, alpha, beta, not board.turn)
+            # Negate the value if it's black's turn to maintain white's perspective
+            if board.turn == chess.BLACK:
+                value = -value
             board.pop()
 
-            if (board.turn == chess.WHITE) == (value > best_value):
+            if value > best_value:
                 best_value = value
                 best_move = move
+
+            if board.turn == chess.WHITE:
+                alpha = max(alpha, value)
+            else:
+                beta = min(beta, -value)
+
+            if beta <= alpha:
+                break
 
         return best_move, best_value
     

@@ -1,8 +1,4 @@
 .env
 *__pycache__
 node_modules
-result.md
-assets/chess-data/*
-tmp/
-notebook/checkpoint/*
-notebook/runs/*
+assets/remove
