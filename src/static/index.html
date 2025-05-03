@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Chess Game with AI Bot</title>
+    <link rel="stylesheet" href="/static/chessboard-1.0.0.min.css" />
+    <script src="/static/jquery-3.6.0.min.js"></script>
+    <script src="/static/chessboard-1.0.0.min.js"></script>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        text-align: center;
+        padding: 20px;
+      }
+      #status {
+        margin-top: 20px;
+        font-size: 18px;
+      }
+      .error-message {
+        color: red;
+        margin-top: 10px;
+      }
+      .bot-turn {
+        background-color: #ffebee;
+        padding: 5px;
+        border-radius: 4px;
+        font-weight: bold;
+      }
+      .player-turn {
+        background-color: #e8f5e9;
+        padding: 5px;
+        border-radius: 4px;
+        font-weight: bold;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Chess Game</h1>
+    <div id="board" style="width: 400px; margin: 0 auto"></div>
+    <select id="ai-select">
+      <option value="KnightVision-1s">KnightVision-1s</option>
+      <option value="KnightVision-10s">KnightVision-10s</option>
+      <option value="Stockfish-Easy">Stockfish-Easy</option>
+      <!-- Adjust options based on your choose_ai.py -->
+    </select>
+    <button id="start-btn">Start Game</button>
+    <div id="turn-display"></div>
+    <div id="error-message" class="error-message"></div>
+    <div id="status"></div>
+
+    <script>
+      let board;
+      let orientation = "white"; // User plays as white
+      let isPlayerTurn = true;
+
+      function onDragStart(source, piece) {
+        if (!isPlayerTurn || piece.search(/^b/) !== -1) {
+          $("#error-message").text(
+            isPlayerTurn ? "" : "Please wait for your turn!"
+          );
+          return false;
+        }
+        $("#error-message").text("");
+        return true;
+      }
+
+      function onDrop(source, target) {
+        const move = source + target;
+        $("#error-message").text("");
+
+        if (!isPlayerTurn) {
+          $("#error-message").text("Please wait for your turn!");
+          return "snapback";
+        }
+
+        // Return snapback immediately for invalid move format
+        if (!source || !target || source === target) {
+          $("#error-message").text("Invalid move");
+          return "snapback";
+        }
+
+        $.ajax({
+          url: "/move",
+          type: "POST",
+          contentType: "application/json",
+          data: JSON.stringify({ move: move }),
+          success: function (response) {
+            if (response.status === "Move accepted") {
+              board.position(response.fen);
+              isPlayerTurn = false;
+              updateTurnDisplay();
+              $("#status").text("AI's turn");
+
+              if (response.ai_move) {
+                board.position(response.fen);
+                isPlayerTurn = true;
+                updateTurnDisplay();
+                $("#status").text("Your turn");
+              }
+            } else if (response.status === "Game over") {
+              board.position(response.fen);
+              $("#status").text("Game Over: " + response.result);
+            } else {
+              $("#error-message").text(response.status);
+              return "snapback";
+            }
+          },
+          error: function (xhr) {
+            $("#error-message").text(
+              xhr.responseJSON?.status || "Error making move"
+            );
+            board.position(board.fen()); // Reset to previous position
+            return "snapback";
+          },
+        });
+
+        // Return snapback by default to prevent move until server validates
+        return "snapback";
+      }
+
+      function onSnapEnd() {
+        // Called after a piece snaps back to its previous position
+        board.position(board.fen());
+      }
+
+      function updateTurnDisplay() {
+        const turnText = isPlayerTurn
+          ? "Your Turn (White)"
+          : "AI's Turn (Black)";
+        $("#turn-display")
+          .text(turnText)
+          .removeClass("bot-turn player-turn")
+          .addClass(isPlayerTurn ? "player-turn" : "bot-turn");
+
+        // Disable board interaction during AI's turn
+        $(".square-55d63").css(
+          "cursor",
+          isPlayerTurn ? "pointer" : "not-allowed"
+        );
+      }
+
+      $(document).ready(function () {
+        board = Chessboard("board", {
+          draggable: true,
+          pieceTheme: "/static/img/chesspieces/wikipedia/{piece}.png",
+          position: "start",
+          orientation: orientation,
+          onDragStart: onDragStart,
+          onDrop: onDrop,
+          onSnapEnd: onSnapEnd,
+        });
+
+        $("#start-btn").click(function () {
+          const ai = $("#ai-select").val();
+          $("#error-message").text("");
+          isPlayerTurn = true;
+          updateTurnDisplay();
+
+          $.ajax({
+            url: "/start",
+            type: "POST",
+            contentType: "application/json",
+            data: JSON.stringify({ ai: ai }),
+            success: function (response) {
+              board.position(response.fen);
+              $("#status").text("Your turn");
+            },
+            error: function () {
+              $("#status").text("Error starting game");
+            },
+          });
+        });
+
+        updateTurnDisplay();
+      });
+    </script>
+  </body>
+</html>
