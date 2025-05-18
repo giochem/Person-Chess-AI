@@ -1,6 +1,5 @@
 import PySimpleGUI as sg
 import chess
-# Assuming chess_ai.choose_ai is available in your project structure
 from chess_ai.choose_ai import ChessAIManager 
 
 # Constants
@@ -28,8 +27,6 @@ def draw_board(graph, board, selected_square=None):
     for file in range(8):
         for rank in range(1, 9): # Ranks 1-8 for drawing logic
             color = 'white' if (file + rank) % 2 == 0 else 'gray'
-            # PySimpleGUI's graph_top_right=(BOARD_SIZE, 0) means y=0 is top.
-            # So, (8 - rank) maps chess ranks (1-8) to PySimpleGUI y-coords (7-0)
             top_left = (file * SQUARE_SIZE, (8 - rank) * SQUARE_SIZE)
             bottom_right = ((file + 1) * SQUARE_SIZE, (9 - rank) * SQUARE_SIZE)
             graph.draw_rectangle(top_left, bottom_right, fill_color=color)
@@ -77,17 +74,19 @@ def main():
     layout = [
         [sg.Graph(
             canvas_size=(BOARD_SIZE, BOARD_SIZE),
-            graph_bottom_left=(0, BOARD_SIZE), # PySimpleGUI graph coords (bottom-left, top-right)
-            graph_top_right=(BOARD_SIZE, 0),   # Inverted Y-axis so (0,0) is top-left
+            graph_bottom_left=(0, BOARD_SIZE), 
+            graph_top_right=(BOARD_SIZE, 0),   
             key='-GRAPH-',
             enable_events=True
         ), 
-        sg.Column([ # New column for move history display
+        sg.Column([ 
             [sg.Text('Move History:')],
             [sg.Multiline(size=(25, 20), key='-MOVES_HISTORY-', write_only=True, autoscroll=True, auto_refresh=True, font=('Helvetica', 10))]
-        ], vertical_alignment='top')], # Align column content to the top
+        ], vertical_alignment='top')], 
         [sg.Text('Select AI:'), sg.Combo(ai_list, key='-AI-', default_value=ai_list[0] if ai_list else '', size=(20, 1)), 
-         sg.Button('Start Game'), sg.Button('Copy FEN', key='-COPY_FEN_BUTTON-')], # ADDED THE COPY FEN BUTTON HERE
+         sg.Button('Start Game'), sg.Button('Copy FEN', key='-COPY_FEN_BUTTON-')],
+        # NEW ROW FOR FEN INPUT AND LOAD BUTTON
+        [sg.Text('Load FEN:'), sg.Input(key='-FEN_INPUT-', size=(50, 1)), sg.Button('Load FEN', key='-LOAD_FEN_BUTTON-')],
         [sg.Text('White to move', key='-STATUS-')],
         [sg.Text('Student: TRẦN XUÂN TRƯỜNG'), sg.Text("Teacher: NGUYỄN HOÀNG ĐIỆP"), sg.Text('Version: 1.0-beta')],
     ]
@@ -102,7 +101,7 @@ def main():
     update_move_history_display(window, board) # Display initial empty history
 
     # Game state variables
-    board = None # Will be set to a new board when "Start Game" is clicked
+    board = None 
     selected_square = None
     ai = None
     game_active = False
@@ -130,13 +129,53 @@ def main():
             update_move_history_display(window, board) # Clear history for new game
             window['-STATUS-'].update('White to move')
 
-        elif event == '-COPY_FEN_BUTTON-': # NEW EVENT HANDLING FOR COPY FEN BUTTON
+        elif event == '-COPY_FEN_BUTTON-':
             if board:
                 fen_string = board.fen()
                 sg.clipboard_set(fen_string)
                 sg.popup_timed('FEN copied to clipboard!', auto_close_duration=1, no_titlebar=True)
             else:
                 sg.popup_timed('No active game to copy FEN from!', auto_close_duration=1, no_titlebar=True)
+
+        elif event == '-LOAD_FEN_BUTTON-': # NEW EVENT HANDLING FOR LOAD FEN BUTTON
+            fen_string = values['-FEN_INPUT-'].strip()
+            if not fen_string:
+                sg.popup_timed('Please enter a FEN string to load!', auto_close_duration=1, no_titlebar=True)
+                continue
+            try:
+                new_board = chess.Board(fen_string)
+                board = new_board # Update the main board variable
+                selected_square = None # Reset any current selection
+                game_active = True # Game is now active
+                draw_board(graph, board)
+                update_move_history_display(window, board) # Update history (will be empty unless FEN includes moves)
+                turn_text = 'White' if board.turn == chess.WHITE else 'Black'
+                window['-STATUS-'].update(f'{turn_text} to move (Loaded from FEN)')
+                window['-FEN_INPUT-'].update('') # Clear the input field
+                
+                # If it's AI's turn immediately after loading, trigger AI move
+                if board.turn == chess.BLACK and ai and game_active:
+                    window['-STATUS-'].update('Bot is thinking...')
+                    window.refresh()
+                    ai_move = ai.find_best_move(board)
+                    if ai_move:
+                        board.push(ai_move)
+                        draw_board(graph, board)
+                        update_move_history_display(window, board)
+                        if board.is_game_over():
+                            result = board.result()
+                            window['-STATUS-'].update(f'Game over: {result}')
+                            game_active = False
+                        else:
+                            window['-STATUS-'].update('White to move')
+                    else:
+                        sg.popup_error("AI could not find a legal move after FEN load.")
+                        game_active = False
+
+            except ValueError:
+                sg.popup_error("Invalid FEN string provided! Please check the format.", title="FEN Error")
+            except Exception as e:
+                sg.popup_error(f"An unexpected error occurred while loading FEN: {e}", title="Error")
 
         elif event == '-GRAPH-' and game_active:
             # Convert PySimpleGUI graph coordinates to chess square coordinates
