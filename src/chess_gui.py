@@ -86,7 +86,8 @@ def main():
             [sg.Text('Move History:')],
             [sg.Multiline(size=(25, 20), key='-MOVES_HISTORY-', write_only=True, autoscroll=True, auto_refresh=True, font=('Helvetica', 10))]
         ], vertical_alignment='top')], # Align column content to the top
-        [sg.Text('Select AI:'), sg.Combo(ai_list, key='-AI-', default_value=ai_list[0] if ai_list else '', size=(20, 1)), sg.Button('Start Game')],
+        [sg.Text('Select AI:'), sg.Combo(ai_list, key='-AI-', default_value=ai_list[0] if ai_list else '', size=(20, 1)), 
+         sg.Button('Start Game'), sg.Button('Copy FEN', key='-COPY_FEN_BUTTON-')], # ADDED THE COPY FEN BUTTON HERE
         [sg.Text('White to move', key='-STATUS-')],
         [sg.Text('Student: TRẦN XUÂN TRƯỜNG'), sg.Text("Teacher: NGUYỄN HOÀNG ĐIỆP"), sg.Text('Version: 1.0-beta')],
     ]
@@ -128,6 +129,14 @@ def main():
             draw_board(graph, board)
             update_move_history_display(window, board) # Clear history for new game
             window['-STATUS-'].update('White to move')
+
+        elif event == '-COPY_FEN_BUTTON-': # NEW EVENT HANDLING FOR COPY FEN BUTTON
+            if board:
+                fen_string = board.fen()
+                sg.clipboard_set(fen_string)
+                sg.popup_timed('FEN copied to clipboard!', auto_close_duration=1, no_titlebar=True)
+            else:
+                sg.popup_timed('No active game to copy FEN from!', auto_close_duration=1, no_titlebar=True)
 
         elif event == '-GRAPH-' and game_active:
             # Convert PySimpleGUI graph coordinates to chess square coordinates
