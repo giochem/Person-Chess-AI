@@ -1,0 +1,6 @@
+chess
+stockfish
+torch
+flask
+numpy
+PySimpleGUI
